@@ -621,12 +621,19 @@ static int btusb_send_frame(struct sk_buff *skb)
 	struct urb *urb;
 	unsigned int pipe;
 	int err;
+	unsigned char aligned_data[256 > skb->len ? 256 : skb->len] __attribute__((aligned (32)));  /* HACK and assume that skb->len < 256 */
+	int i;
 
 	BT_DBG("%s", hdev->name);
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0))
 	skb->dev = (void *) hdev;
 #endif
+
+	/* copy over to aligned structure */
+	for (i = 0; i < skb->len; ++i) {
+		aligned_data[i] = ((unsigned char*)(skb->data))[i];
+	}
 
 	if (!test_bit(HCI_RUNNING, &hdev->flags))
 		return -EBUSY;
@@ -652,7 +659,7 @@ static int btusb_send_frame(struct sk_buff *skb)
 		pipe = usb_sndctrlpipe(data->udev, 0x00);
 
 		usb_fill_control_urb(urb, data->udev, pipe, (void *) dr,
-				skb->data, skb->len, btusb_tx_complete, skb);
+				aligned_data, skb->len, btusb_tx_complete, skb);
 
 		hdev->stat.cmd_tx++;
 		break;
@@ -669,7 +676,7 @@ static int btusb_send_frame(struct sk_buff *skb)
 					data->bulk_tx_ep->bEndpointAddress);
 
 		usb_fill_bulk_urb(urb, data->udev, pipe,
-				skb->data, skb->len, btusb_tx_complete, skb);
+				aligned_data, skb->len, btusb_tx_complete, skb);
 
 		hdev->stat.acl_tx++;
 		break;
@@ -686,7 +693,7 @@ static int btusb_send_frame(struct sk_buff *skb)
 					data->isoc_tx_ep->bEndpointAddress);
 
 		usb_fill_int_urb(urb, data->udev, pipe,
-				skb->data, skb->len, btusb_isoc_tx_complete,
+				aligned_data, skb->len, btusb_isoc_tx_complete,
 				skb, data->isoc_tx_ep->bInterval);
 
 		urb->transfer_flags  = URB_ISO_ASAP;
